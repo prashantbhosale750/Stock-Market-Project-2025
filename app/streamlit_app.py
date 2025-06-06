@@ -17,50 +17,53 @@ model = load_joblib(model_path)
 
 # Drop non-numeric columns (keep for display)
 display_df = df.copy()
-feature_cols = [col for col in df.columns if col not in ['Date', 'Headline', 'Close', 'sentiment_positive', 'sentiment_neutral', 'sentiment_negative']]
-df_model = df.drop(columns=['Date', 'Headline', 'Close'])
+feature_cols = ['Open', 'High', 'Low', 'Volume', 'sentiment_neutral']
+df_model = df[feature_cols]
 
 # === Streamlit UI ===
-st.set_page_config(page_title="Stock Price Predictor", layout="centered")
-st.title("📈 Stock Closing Price Predictor")
-st.markdown("Enter a **specific date** below to view the predicted closing price.")
+st.set_page_config(page_title="Stock Price Predictor", layout="wide")
+st.markdown("""
+    <style>
+    .main { background-color: #f4f6f9; }
+    .reportview-container .markdown-text-container { font-family: 'Segoe UI', sans-serif; }
+    .stButton>button { background-color: #0073e6; color: white; border-radius: 6px; }
+    .stSidebar { background-color: #e3ecf7; }
+    .block-container { padding-top: 2rem; }
+    </style>
+""", unsafe_allow_html=True)
 
-# Date input
-date_input = st.date_input("📅 Select a Date", min_value=datetime(2016,1,1), max_value=datetime(2022,12,31))
+st.sidebar.image("https://img.icons8.com/clouds/100/stock-share.png", width=100)
+st.sidebar.title("📊 Options")
 
-# Search & Predict
-if st.button("🔍 Predict Price"):
+nav = st.sidebar.radio("Navigate", ["📈 Predict Price", "📉 Evaluation Metrics", "📋 Feature Importance"])
+
+# === Shared UI Elements ===
+date_input = st.sidebar.date_input("📅 Select a Date", min_value=datetime(2016,1,1), max_value=datetime(2022,12,31))
+use_custom_sentiment = st.sidebar.checkbox("🎭 Adjust Sentiment")
+custom_sentiment = st.sidebar.slider("Sentiment Neutral Score", 0.0, 1.0, 0.5, step=0.01)
+
+# === Page 1: Predict Price ===
+if nav == "📈 Predict Price":
+    st.title("📈 Stock Closing Price Predictor with Sentiment Adjustment")
+    st.markdown("Use this app to predict closing price based on historical and sentiment data.")
+
     date_str = date_input.strftime("%Y-%m-%d")
     if date_str not in display_df['Date'].values:
-        st.error("❌ No data available for the selected date. Try another date.")
+        st.warning("❌ No data available for the selected date.")
     else:
         row = display_df[display_df['Date'] == date_str]
-        features = row[feature_cols].values
-        prediction = model.predict(features)[0]
+        feature_values = row[feature_cols].copy()
 
-        st.success(f"✅ Predicted Closing Price for {date_str}: ₹{prediction:.2f}")
+        if use_custom_sentiment:
+            feature_values['sentiment_neutral'] = custom_sentiment
+            st.info(f"Custom Sentiment Score applied: {custom_sentiment:.2f}")
 
-        # Evaluation metrics
-        X_test = df_model.values
-        y_test = df['Close'].values
-        y_pred = model.predict(X_test)
+        prediction = model.predict(feature_values.values)[0]
+        st.success(f"✅ Predicted Closing Price on {date_str}: ₹{prediction:.2f}")
 
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-
-        st.markdown("---")
-        st.markdown("### 📊 Model Evaluation Metrics")
-        st.write(f"**RMSE**: {rmse:.4f}")
-        st.write(f"**MAE**: {mae:.4f}")
-        st.write(f"**R² Score**: {r2:.4f}")
-
-        # Plot closing prices with prediction marker
-        st.markdown("---")
-        st.markdown("### 📉 Historical Prices with Prediction")
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.plot(display_df['Date'], display_df['Close'], label="Actual Closing Price")
-        ax.axvline(x=date_str, color='red', linestyle='--', label=f"Predicted: {date_str}")
+        ax.axvline(x=date_str, color='red', linestyle='--', label=f"Prediction Date")
         ax.scatter(date_str, prediction, color='red', zorder=5)
         ax.set_title("Stock Closing Prices")
         ax.set_xlabel("Date")
@@ -69,18 +72,35 @@ if st.button("🔍 Predict Price"):
         plt.xticks(rotation=45)
         st.pyplot(fig)
 
-        # Optional: Feature importance
-        st.markdown("---")
-        st.markdown("### 🔍 Feature Importance")
-        importances = model.feature_importances_
-        sorted_idx = np.argsort(importances)[::-1]
-        sorted_features = [feature_cols[i] for i in sorted_idx]
+# === Page 2: Evaluation Metrics ===
+elif nav == "📉 Evaluation Metrics":
+    st.title("📉 Model Evaluation Metrics")
+    X_test = df_model.values
+    y_test = df['Close'].values
+    y_pred = model.predict(X_test)
 
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        ax2.barh(sorted_features[::-1], importances[sorted_idx][::-1])
-        ax2.set_title("Feature Importance")
-        ax2.set_xlabel("Importance")
-        st.pyplot(fig2)
+    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    st.metric(label="RMSE", value=f"{rmse:.2f}")
+    st.metric(label="MAE", value=f"{mae:.2f}")
+    st.metric(label="R² Score", value=f"{r2:.2f}")
+
+# === Page 3: Feature Importance ===
+elif nav == "📋 Feature Importance":
+    st.title("📋 Feature Importance")
+    importances = model.feature_importances_
+    sorted_idx = np.argsort(importances)[::-1]
+    sorted_features = [feature_cols[i] for i in sorted_idx]
+
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
+    ax2.barh(sorted_features[::-1], importances[sorted_idx][::-1], color="#0073e6")
+    ax2.set_title("Random Forest Feature Importance")
+    ax2.set_xlabel("Importance Score")
+    st.pyplot(fig2)
 
 st.markdown("---")
-st.caption("📌 Note: Only works for dates available in test dataset.")
+st.caption("Built with ❤️ using Streamlit | For educational purposes")
+
+
