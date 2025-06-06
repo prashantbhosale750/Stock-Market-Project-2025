@@ -16,7 +16,6 @@ xgboost
 pytorch-lightning
 transformers
 darts
-matplotlib
 seaborn
 tensorflow==2.16.2
 keras

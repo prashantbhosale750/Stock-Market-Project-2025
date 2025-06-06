@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+import matplotlib
 
 # Load dataset
 df = pd.read_csv("data/processed/merged_finbert_encoded.csv")
